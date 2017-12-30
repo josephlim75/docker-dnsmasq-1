@@ -1,20 +1,55 @@
 # docker-dnsmasq
 
-It's a [dnsmasq][dnsmasq] Docker image. It is only 6 MB in size. It is just an `ENTRYPOINT` to the `dnsmasq` binary. Can you smell what the rock is cookin'?
+This is a [dnsmasq][dnsmasq] Docker image forked from [andyshinn][andyshinn]. It is only 5 MB in size and provides an `entrypoint` to the `dnsmasq` binary. Which is suitable for running as a service in Docker swarm mode.
 
 ## Usage
 
-It is usually a good idea to use a tag other than `latest` if you are using this image in a production setting. There are currently two tags to choose from:
+The latest image uses dnsmasq 2.78 based on Alpine 3.7.
 
-* `andyshinn/dnsmasq:2.72`: dnsmasq 2.72 based on Alpine 3.2
-* `andyshinn/dnsmasq:2.75`: dnsmasq 2.75 based on Alpine 3.3
-* `andyshinn/dnsmasq:2.76`: dnsmasq 2.76 based on Alpine 3.4
-* `andyshinn/dnsmasq:2.78`: dnsmasq 2.78 based on Alpine Edge
+### Entrypoint
 
-[dnsmasq][dnsmasq] requires `NET_ADMIN` capabilities to run correctly. Start it with something like `docker run -p 53:53/tcp -p 53:53/udp --cap-add=NET_ADMIN andyshinn/dnsmasq:2.75`.
+The entrypoint is
 
-The configuration is all handled on the command line (no wrapper scripts here). The `ENTRYPOINT` is `dnsmasq -k` to keep it running in the foreground. If you wanted to send requests for an internal domain (such as Consul) you can forward the requests upstream using something like `docker run -p 53:53/tcp -p 53:53/udp --cap-add=NET_ADMIN andyshinn/dnsmasq:2.75 -S /consul/10.17.0.2`. This will send a request for `redis.service.consul` to `10.17.0.2`
+```
+ dnsmasq -k --log-facility - -u root
+```
 
-As this is a very barebones entrypoint with just enough to run in the foreground, there is no logging enabled by default. To send logging to stdout you can add `--log-facility=-` as an option.
+The option `-k` keeps dnsmasq running in the foreground enabling docker health checks. The second option `--log-facility -` routes logging to stdout. To avoid having to set linux capabilities, `dnsmasq` is told to run as `root` instead of `nobody` by setting the parameter `-u root`. 
+
+### Deploy as a service
+
+```
+docker service create --name dnsmasq \
+	--publish 53:53/tcp --publish 53:53/udp \
+	ntim/dnsmasq:latest
+```
+
+### Configuration
+
+Per default, dnsmasq looks for configuration files in the `/etc/dnsmasq.d/` directory. The following configuration file overwrites DNS requests to `example.com` and its subdomains (useful for SNI routing) to the ip `192.168.99.99`
+
+```
+cat <<EOF > dnsmasq_example.conf
+address=/example.com/192.168.99.99
+EOF
+```
+
+Add docker configuration
+
+```
+docker config create dnsmasq_example.conf example.conf
+```
+
+and deploy the service with 
+
+```
+docker service create --name dnsmasq \
+	--publish 53:53/tcp --publish 53:53/udp \
+	--config source=dnsmasq_example.conf,target=/etc/dnsmasq.d/example.conf \
+	ntim/dnsmasq:latest
+```
+
+mounting the configuration.
 
 [dnsmasq]: http://www.thekelleys.org.uk/dnsmasq/doc.html
+[andyshinn]: https://github.com/andyshinn/docker-dnsmasq
